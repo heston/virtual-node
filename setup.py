@@ -39,14 +39,11 @@ class node_bdist_egg(_bdist_egg):
 
 
 class node_build(_build):
-    env_dir = os.environ.get('VIRTUAL_ENV')
+    base_dir = os.environ.get('VIRTUAL_ENV')
     default_version = '0.8.11'
     verbose = False
 
     def run(self):
-        if not self.env_dir:
-            raise KeyError("no virtualenv specified in 'VIRTUAL_ENV' required "
-                           "to proceed with install")
         versions = self.distribution.get_version().rsplit('-', 1)
         if len(versions) == 2:
             self.version = versions[1]
@@ -57,16 +54,34 @@ class node_build(_build):
         if self.check_for_node():
             logger.info('Skipping NodeJS installation, v{0} is already installed.'.format(self.version))
         else:
-            self.install_node(self.env_dir)
-        self.run_npm(self.env_dir)
-        self.run_bower(self.env_dir)
+            self.install_node(self.get_base_dir())
+        self.run_npm(self.get_base_dir())
+        self.run_bower(self.get_base_dir())
+
+    def get_base_dir(self):
+        if self.base_dir:
+            return self.base_dir
+        elif os.path.exists('.heroku'):
+            # We're on Heroku, paths are a little different.
+            self.base_dir = '.heroku/python'
+            return self.base_dir
+        else:
+            raise KeyError(
+                    'Install path could not be determined. Ensure you\'re in a '
+                    'virtualenv, or running on Heroku.')
+
+    def get_src_dir(self):
+        if os.path.exists('.heroku'):
+            return '.heroku/src'
+        else:
+            return self.get_base_dir()
 
     def check_for_node(self):
         """
             Check that the required version of Node is installed in the virtual
             env. If it is, there's no need to re-install.
         """
-        node_path = os.path.join(self.env_dir, 'bin', 'node')
+        node_path = os.path.join(self.get_base_dir(), 'bin', 'node')
         if os.path.exists(node_path):
             version = self.run_cmd([node_path, '--version'])[1][0]
             if 'v{0}'.format(self.version) == version:
@@ -168,7 +183,7 @@ class node_build(_build):
         node_name = 'node-v%s' % (self.version)
         node_url = self.get_node_src_url(self.version)
 
-        src_dir = os.path.join(env_dir, 'src')
+        src_dir = self.get_src_dir()
         node_src_dir = os.path.join(src_dir, node_name)
         env_dir = os.path.abspath(env_dir)
 
